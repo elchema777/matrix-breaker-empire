@@ -12,6 +12,7 @@ export default function Settings({ onClose }) {
     div2_account: "106034160",
     div3_account: "5049913114",
     chat_id:      "8241521898",
+    nexus_url:    "",
   }));
 
   const save = () => {
@@ -84,6 +85,20 @@ export default function Settings({ onClose }) {
           </div>
         ))}
         <div style={{ marginTop:10, fontSize:10, color:"#3a3a4a" }}>Targets are fixed per the Matrix Breaker sacred rules.</div>
+      </div>
+
+      {/* NEXUS Live Data URL */}
+      <div style={{ background:"rgba(0,212,255,0.04)", border:"1px solid rgba(0,212,255,0.15)", borderRadius:12, padding:14, marginBottom:14 }}>
+        <div style={{ fontFamily:"'Orbitron',monospace", fontSize:10, fontWeight:700, color:"#00D4FF", letterSpacing:2, marginBottom:10 }}>LIVE DATA SOURCE</div>
+        <div style={{ marginBottom:8 }}>
+          <div style={{ ...L, color:"#00D4FF" }}>NEXUS URL (ngrok — sent to Telegram on startup)</div>
+          <input value={settings.nexus_url || ""} onChange={e => setSettings(s => ({...s, nexus_url: e.target.value}))}
+            style={INP} placeholder="https://xxxx.ngrok.io" />
+        </div>
+        <div style={{ fontSize:9, color:"#3a3a4a", lineHeight:1.7 }}>
+          Paste the ngrok URL from Telegram when empire starts.<br/>
+          App polls every 30s — balance, P&amp;L, win rate update live.
+        </div>
       </div>
 
       <div style={{ display:"flex", gap:10 }}>

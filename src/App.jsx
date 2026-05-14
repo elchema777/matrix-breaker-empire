@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { ls } from "./config";
 import MatrixRain from "./components/MatrixRain";
 import BottomNav  from "./components/BottomNav";
 import EmpireOverview   from "./screens/EmpireOverview";
@@ -10,6 +11,40 @@ import Settings         from "./screens/Settings";
 
 export default function App() {
   const [tab, setTab]             = useState("empire");
+  const [empireStats, setEmpireStats] = useState(() => ls.get("empire_stats", {}));
+
+  const syncEmpireData = useCallback(async () => {
+    try {
+      const settings = ls.get("empire_settings", {});
+      const url = settings.nexus_url;
+      if (!url) return;
+      const r = await fetch(url.replace(/\/$/, "") + "/nexus_status.json?t=" + Date.now());
+      if (!r.ok) return;
+      const data = await r.json();
+      const divMap = { 1: "div1", 2: "div2", 3: "div3" };
+      const stats = {};
+      (data.divisions || []).forEach(div => {
+        const key = divMap[div.id];
+        if (key) stats[key] = {
+          online:      div.online,
+          balance:     div.balance,
+          daily_pnl:   div.daily_pnl,
+          win_rate:    div.win_rate,
+          signal:      div.signal || "FLAT",
+          last_update: div.last_update,
+        };
+      });
+      stats.nexus = { online: (data.online_divisions || 0) > 0, last_update: data.last_update };
+      ls.set("empire_stats", stats);
+      setEmpireStats(stats);
+    } catch (e) { /* silent — offline */ }
+  }, []);
+
+  useEffect(() => {
+    syncEmpireData();
+    const t = setInterval(syncEmpireData, 30000);
+    return () => clearInterval(t);
+  }, [syncEmpireData]);
   const [showSettings, setShowSettings] = useState(false);
 
   const nav = t => { setTab(t); window.scrollTo(0,0); };
