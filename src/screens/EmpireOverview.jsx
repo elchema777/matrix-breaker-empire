@@ -1,190 +1,226 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DIVISIONS, EMPIRE_TARGETS, loadTokens, sendMessage, ls } from "../config";
-
-const S = {
-  card: { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:14, padding:16, marginBottom:12 },
-  label: { fontFamily:"'Orbitron',monospace", fontSize:8, letterSpacing:"0.2em", color:"#6B6B80", marginBottom:4 },
-  title: { fontFamily:"'Orbitron',monospace", fontSize:13, fontWeight:700, color:"#FFD700", letterSpacing:3, marginBottom:20, textAlign:"center" },
-};
 
 function getPRTime() {
   return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Puerto_Rico" }));
 }
 
-function DivCard({ div, stats, onNavigate }) {
-  const col = div.color;
-  const isOnline = stats?.online ?? false;
-  const bal = stats?.balance ?? null;
-  const pnl = stats?.daily_pnl ?? null;
-  const wr  = stats?.win_rate  ?? null;
-  const sig = stats?.signal    ?? "—";
-  const lastUpdate = stats?.last_update ?? null;
-  const ageMin = lastUpdate ? Math.floor((Date.now() - new Date(lastUpdate + "Z").getTime()) / 60000) : null;
-  const isStale = ageMin !== null && ageMin > 5;
+const f$ = v => v != null ? "$" + Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—";
+const fpnl = v => { if (v == null) return "—"; const n = Number(v); return (n >= 0 ? "+" : "") + f$(Math.abs(n)); };
+const clr = v => Number(v) >= 0 ? "#00ff9d" : "#ff3b5c";
+
+// ── Mini equity chart (SVG) ────────────────────────────────────────
+function MiniChart({ data, color = "#d4a017", height = 50 }) {
+  if (!data || data.length < 2) return null;
+  const w = 280, h = height;
+  const lo = Math.min(...data), hi = Math.max(...data);
+  const range = hi - lo || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - lo) / range) * (h - 4) - 2;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display:"block" }}>
+      <defs>
+        <linearGradient id={`g${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon
+        points={`0,${h} ${pts} ${w},${h}`}
+        fill={`url(#g${color.replace("#","")})`}
+      />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
+      <circle cx={data.length > 0 ? (((data.length-1)/(data.length-1))*w) : w} cy={h - ((data[data.length-1]-lo)/range)*(h-4)-2} r="3" fill={color}/>
+    </svg>
+  );
+}
+
+// ── Trade row ─────────────────────────────────────────────────────
+function TradeRow({ t }) {
+  const isBuy = (t.dir||"").toUpperCase().includes("BUY") || (t.dir||"").toUpperCase() === "LONG";
+  const pnlColor = t.profit >= 0 ? "#00ff9d" : "#ff3b5c";
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"38px 1fr auto", gap:8, padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,0.04)", alignItems:"center" }}>
+      <div style={{ padding:"2px 0", borderRadius:4, textAlign:"center", fontSize:8, fontWeight:"bold", letterSpacing:1, background: isBuy ? "rgba(0,255,157,0.1)" : "rgba(255,59,92,0.1)", color: isBuy ? "#00ff9d" : "#ff3b5c", border:`1px solid ${isBuy?"rgba(0,255,157,0.3)":"rgba(255,59,92,0.3)"}` }}>
+        {isBuy ? "BUY" : "SELL"}
+      </div>
+      <div style={{ fontSize:9, lineHeight:1.6, color:"#7a9ab8" }}>
+        <span style={{ color:"#b8cce0", fontWeight:"bold" }}>{t.symbol||"XAUUSD"}</span> {t.lots}L
+        <br/>{(t.time||"").slice(5,16)}
+      </div>
+      <div style={{ fontSize:10, fontWeight:"bold", color:pnlColor, textAlign:"right" }}>
+        {t.profit >= 0 ? "+" : ""}${Math.abs(Number(t.profit)).toFixed(2)}
+      </div>
+    </div>
+  );
+}
+
+// ── Division card ─────────────────────────────────────────────────
+const DIV_COLORS = { div1:"#d4a017", div2:"#00d4ff", div3:"#8888ff" };
+
+function DivCard({ divKey, stats, trades }) {
+  const div = DIVISIONS[divKey];
+  const col = DIV_COLORS[divKey] || "#d4a017";
+  const on = stats?.online ?? false;
+  const divTrades = (trades||[]).filter(t => t.div === parseInt(divKey.replace("div",""))).slice(0,5);
 
   return (
-    <div style={{ ...S.card, border:`1px solid ${isOnline && !isStale ? `${col}30` : "rgba(255,255,255,0.06)"}`, background:`rgba(255,255,255,0.03)` }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
-        <div>
-          <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, fontWeight:700, color:col, letterSpacing:2 }}>{div.label} — {div.name}</div>
-          <div style={{ color:"#3a3a4a", fontSize:10, marginTop:2 }}>{div.bot}</div>
-          <div style={{ color:"#6B6B80", fontSize:9, marginTop:2 }}>{div.instruments} · {div.strategy}</div>
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
-          <div style={{ padding:"3px 10px", borderRadius:20, fontSize:9, fontFamily:"'Orbitron',monospace", fontWeight:700, background: isOnline && !isStale ? `${col}18` : "rgba(255,255,255,0.05)", border:`1px solid ${isOnline && !isStale ? `${col}40` : "rgba(255,255,255,0.08)"}`, color: isOnline && !isStale ? col : "#6B6B80" }}>
-            {isStale ? "STALE" : isOnline ? "ONLINE" : "OFFLINE"}
-          </div>
-          {ageMin !== null && <div style={{ fontSize:8, color:"#3a3a4a" }}>{ageMin}m ago</div>}
-        </div>
-      </div>
+    <div style={{
+      background:"rgba(255,255,255,0.025)",
+      border:`1px solid ${on ? col+"33" : "rgba(255,255,255,0.07)"}`,
+      borderRadius:12, marginBottom:12, overflow:"hidden",
+      boxShadow: on ? `0 0 20px ${col}11` : "none",
+    }}>
+      {/* Top color accent */}
+      <div style={{ height:2, background:on ? `linear-gradient(90deg,transparent,${col},transparent)` : "transparent" }}/>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10 }}>
-        {[
-          ["BALANCE", bal !== null ? `$${Number(bal).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})}` : "—", "#F0F0F0"],
-          ["DAILY P&L", pnl !== null ? `${pnl >= 0 ? "+" : ""}$${Math.abs(pnl).toFixed(0)}` : "—", pnl > 0 ? "#00FF88" : pnl < 0 ? "#FF3B3B" : "#F0F0F0"],
-          ["WIN RATE", wr !== null ? `${wr}%` : "—", wr >= 60 ? "#00FF88" : wr >= 45 ? "#FF8C00" : "#FF3B3B"],
-        ].map(([l,v,c]) => (
-          <div key={l} style={{ background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-            <div style={{ ...S.label, marginBottom:4 }}>{l}</div>
-            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:13, fontWeight:700, color:c }}>{v}</div>
+      <div style={{ padding:"12px 14px" }}>
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+          <div>
+            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:10, fontWeight:700, color:col, letterSpacing:2 }}>{div?.label} — {div?.name}</div>
+            <div style={{ fontSize:8, color:"#3a5a7a", marginTop:2, letterSpacing:1 }}>{div?.strategy}</div>
           </div>
-        ))}
-      </div>
+          <div style={{ padding:"3px 10px", borderRadius:20, fontSize:8, fontWeight:700, fontFamily:"'Orbitron',monospace", background: on ? `${col}18` : "rgba(255,255,255,0.05)", border:`1px solid ${on ? col+"44" : "rgba(255,255,255,0.08)"}`, color: on ? col : "#3a5a7a" }}>
+            {on ? "● LIVE" : "○ OFFLINE"}
+          </div>
+        </div>
 
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div style={{ fontSize:10, color:"#6B6B80" }}>Signal: <span style={{ color:sig.includes("LONG") ? "#00FF88" : sig.includes("SHORT") ? "#FF3B3B" : "#6B6B80", fontWeight:700 }}>{sig}</span></div>
-        {div.id === "div3" && !isOnline && (
-          <div style={{ fontSize:9, color:"#FF8C00", fontFamily:"'Orbitron',monospace" }}>⚠ Connect data feed</div>
+        {/* Stats row */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:10 }}>
+          {[
+            ["BALANCE", f$(stats?.balance), col],
+            ["DAILY P&L", fpnl(stats?.daily_pnl), clr(stats?.daily_pnl)],
+            ["WIN RATE", stats?.win_rate != null ? stats.win_rate.toFixed(1)+"%" : "—", "#00d4ff"],
+          ].map(([l,v,c]) => (
+            <div key={l} style={{ background:"rgba(0,0,0,0.2)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+              <div style={{ fontSize:7, color:"#3a5a7a", letterSpacing:1.5, marginBottom:3, fontFamily:"'Orbitron',monospace" }}>{l}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:c, fontFamily:"'Orbitron',monospace" }}>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Mini chart */}
+        {stats?.balance_history && stats.balance_history.length > 1 && (
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:7, color:"#3a5a7a", letterSpacing:1.5, marginBottom:4, fontFamily:"'Orbitron',monospace" }}>EQUITY CURVE</div>
+            <MiniChart data={stats.balance_history} color={col} height={44}/>
+          </div>
+        )}
+
+        {/* Last trades */}
+        {divTrades.length > 0 && (
+          <div>
+            <div style={{ fontSize:7, color:"#3a5a7a", letterSpacing:1.5, marginBottom:4, fontFamily:"'Orbitron',monospace" }}>LAST {divTrades.length} TRADES</div>
+            {divTrades.map((t,i) => <TradeRow key={i} t={t}/>)}
+          </div>
+        )}
+        {on && divTrades.length === 0 && (
+          <div style={{ fontSize:9, color:"#3a5a7a", padding:"6px 0" }}>No trades recorded yet this session</div>
         )}
       </div>
     </div>
   );
 }
 
+// ── Main component ────────────────────────────────────────────────
 export default function EmpireOverview({ onNavigate }) {
-  const [time, setTime]       = useState(getPRTime());
-  const [stats, setStats]     = useState(() => ls.get("empire_stats", {}));
+  const [time, setTime]   = useState(getPRTime());
+  const [stats, setStats] = useState(() => ls.get("empire_stats", {}));
+  const [trades, setTrades] = useState(() => ls.get("empire_trades", []));
+  const [toast, setToast] = useState("");
   const [sending, setSending] = useState(false);
-  const [toast, setToast]     = useState("");
 
   useEffect(() => {
     const t = setInterval(() => setTime(getPRTime()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const timeStr = time.toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:true });
-  const dateStr = time.toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" });
+  // Re-render when localStorage changes (updated by App.jsx fetcher)
+  useEffect(() => {
+    const poll = setInterval(() => {
+      setStats(ls.get("empire_stats", {}));
+      setTrades(ls.get("empire_trades", []));
+    }, 5000);
+    return () => clearInterval(poll);
+  }, []);
 
-  // Empire-wide aggregates from cached stats
   const allStats = ["div1","div2","div3"].map(k => stats[k]).filter(Boolean);
-  const totalBalance = allStats.reduce((s,x) => s + (x.balance || 0), 0);
-  const totalPnl     = allStats.reduce((s,x) => s + (x.daily_pnl || 0), 0);
+  const totalBalance = allStats.reduce((s,x) => s + (x.balance||0), 0);
+  const totalPnl     = allStats.reduce((s,x) => s + (x.daily_pnl||0), 0);
   const activeDivs   = allStats.filter(x => x.online).length;
-  const avgWR        = allStats.length ? (allStats.reduce((s,x) => s + (x.win_rate || 0), 0) / allStats.length).toFixed(0) : 0;
-  const nexusStat    = stats["nexus"] || {};
-
+  const avgWR        = allStats.length ? (allStats.reduce((s,x) => s + (x.win_rate||0), 0) / allStats.length).toFixed(1) : "—";
   const pct = Math.min(1, totalBalance / EMPIRE_TARGETS.live_trigger);
+  const timeStr = time.toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:true });
+  const dateStr = time.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-
   const sendBrief = async () => {
     setSending(true);
     const tokens = loadTokens();
-    await sendMessage(tokens.nexus, tokens.chatId, "/report");
-    showToast("Brief sent to NEXUS bot");
-    setSending(false);
-  };
-
-  const emergencyStop = async () => {
-    if (!window.confirm("Send /stop to ALL divisions?")) return;
-    const tokens = loadTokens();
-    setSending(true);
-    await Promise.all([
-      sendMessage(tokens.div1, tokens.chatId, "/stop"),
-      sendMessage(tokens.div2, tokens.chatId, "/stop"),
-      sendMessage(tokens.div3, tokens.chatId, "/stop"),
-    ]);
-    showToast("[STOP] Sent to Div1, Div2, Div3");
+    await sendMessage(tokens.nexus, tokens.chatId, "/empire");
+    showToast("Brief requested from @MatrixNexus_bot");
     setSending(false);
   };
 
   return (
-    <div style={{ padding:"24px 16px 90px", position:"relative", zIndex:1 }}>
+    <div style={{ padding:"16px 14px 90px", position:"relative", zIndex:1 }}>
+
       {/* Header */}
-      <div style={{ textAlign:"center", marginBottom:20 }}>
-        <div style={{ fontFamily:"'Orbitron',monospace", fontSize:18, fontWeight:900, color:"#FFD700", letterSpacing:4, textShadow:"0 0 30px rgba(255,215,0,0.4)" }}>⬡ MATRIX BREAKER EMPIRE</div>
-        <div style={{ color:"#6B6B80", fontSize:11, marginTop:4 }}>{dateStr}</div>
-        <div style={{ fontFamily:"'Orbitron',monospace", fontSize:22, fontWeight:700, color:"#00D4FF", marginTop:6 }}>{timeStr}</div>
-        <div style={{ color:"#3a3a4a", fontSize:9, marginTop:2, letterSpacing:3 }}>PUERTO RICO UTC-4</div>
+      <div style={{ textAlign:"center", marginBottom:18 }}>
+        <div style={{ fontFamily:"'Orbitron',monospace", fontSize:16, fontWeight:900, letterSpacing:4, background:"linear-gradient(90deg,#d4a017,#f0c040,#00d4ff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
+          ⬡ MATRIX BREAKER
+        </div>
+        <div style={{ color:"#3a5a7a", fontSize:9, letterSpacing:3, marginTop:2 }}>EMPIRE COMMAND · {dateStr.toUpperCase()}</div>
+        <div style={{ fontFamily:"'Orbitron',monospace", fontSize:20, fontWeight:700, color:"#00d4ff", marginTop:6, textShadow:"0 0 20px rgba(0,212,255,0.4)" }}>{timeStr}</div>
       </div>
 
-      {/* Empire Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-        {[
-          ["TOTAL BALANCE", totalBalance > 0 ? `$${totalBalance.toLocaleString("en-US",{maximumFractionDigits:0})}` : "—", "#FFD700"],
-          ["TODAY'S P&L",   totalPnl !== 0 ? `${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(0)}` : "—", totalPnl >= 0 ? "#00FF88" : "#FF3B3B"],
-          ["ACTIVE DIVS",   `${activeDivs}/3`, "#00D4FF"],
-          ["AVG WIN RATE",  `${avgWR}%`, parseInt(avgWR) >= 55 ? "#00FF88" : "#FF8C00"],
-        ].map(([l,v,c]) => (
-          <div key={l} style={{ ...S.card, textAlign:"center", marginBottom:0, padding:"12px 10px" }}>
-            <div style={{ ...S.label }}>{l}</div>
-            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:18, fontWeight:700, color:c }}>{v}</div>
-          </div>
-        ))}
-      </div>
+      {/* Empire totals */}
+      <div style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(212,160,23,0.2)", borderRadius:12, padding:14, marginBottom:14, boxShadow:"0 0 30px rgba(212,160,23,0.06)" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+          {[
+            ["TOTAL BALANCE", f$(totalBalance||null), "#d4a017"],
+            ["TODAY'S P&L",   fpnl(totalPnl||null),  clr(totalPnl)],
+            ["ACTIVE DIVS",   `${activeDivs}/3`,      "#00d4ff"],
+            ["AVG WIN RATE",  avgWR !== "—" ? avgWR+"%" : "—", Number(avgWR)>=55?"#00ff9d":"#ffaa00"],
+          ].map(([l,v,c]) => (
+            <div key={l} style={{ background:"rgba(0,0,0,0.25)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
+              <div style={{ fontFamily:"'Orbitron',monospace", fontSize:7, color:"#3a5a7a", letterSpacing:1.5, marginBottom:4 }}>{l}</div>
+              <div style={{ fontFamily:"'Orbitron',monospace", fontSize:17, fontWeight:700, color:c }}>{v}</div>
+            </div>
+          ))}
+        </div>
 
-      {/* Demo Progress Bar */}
-      <div style={{ ...S.card, marginBottom:16 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-          <div style={{ ...S.label }}>DEMO PROGRESS → LIVE TRIGGER</div>
-          <div style={{ fontFamily:"'Orbitron',monospace", fontSize:9, color:"#FFD700" }}>${totalBalance.toLocaleString()} / $150k</div>
+        {/* Progress bar */}
+        <div style={{ marginBottom:4, display:"flex", justifyContent:"space-between" }}>
+          <span style={{ fontFamily:"'Orbitron',monospace", fontSize:7, color:"#3a5a7a", letterSpacing:1 }}>DEMO → LIVE $150k</span>
+          <span style={{ fontFamily:"'Orbitron',monospace", fontSize:7, color:"#d4a017" }}>{(pct*100).toFixed(1)}%</span>
         </div>
-        <div style={{ height:8, borderRadius:4, background:"rgba(255,255,255,0.06)", overflow:"hidden", marginBottom:8 }}>
-          <div style={{ height:"100%", width:`${pct*100}%`, background:"linear-gradient(90deg,#00D4FF,#FFD700)", borderRadius:4, transition:"width 1s ease" }} />
-        </div>
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:8, color:"#3a3a4a", fontFamily:"'Orbitron',monospace" }}>
-          <span>$0</span><span style={{color:"#6B6B80"}}>CP1 $110k</span><span style={{color:"#6B6B80"}}>CP2 $130k</span><span style={{color:"#FFD700"}}>LIVE $150k</span>
+        <div style={{ height:6, borderRadius:3, background:"rgba(255,255,255,0.05)", overflow:"hidden" }}>
+          <div style={{ height:"100%", width:`${pct*100}%`, background:"linear-gradient(90deg,#d4a017,#00d4ff)", borderRadius:3, transition:"width 1s", boxShadow:"0 0 8px rgba(212,160,23,0.6)" }}/>
         </div>
       </div>
 
-      {/* Division Cards */}
-      {["div1","div2","div3"].map(k => (
-        <DivCard key={k} div={DIVISIONS[k]} stats={stats[k]} onNavigate={onNavigate} />
-      ))}
+      {/* Division cards */}
+      <DivCard divKey="div1" stats={stats["div1"]} trades={trades}/>
+      <DivCard divKey="div2" stats={stats["div2"]} trades={trades}/>
+      <DivCard divKey="div3" stats={stats["div3"]} trades={trades}/>
 
-      {/* NEXUS Status */}
-      <div style={{ ...S.card, border:"1px solid rgba(155,89,182,0.25)" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div>
-            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, fontWeight:700, color:"#9B59B6", letterSpacing:2 }}>NEXUS COMMAND</div>
-            <div style={{ color:"#3a3a4a", fontSize:9, marginTop:2 }}>@MatrixNexus_bot · Shared Services</div>
-          </div>
-          <div style={{ padding:"3px 10px", borderRadius:20, fontSize:9, fontFamily:"'Orbitron',monospace", background:"rgba(155,89,182,0.12)", border:"1px solid rgba(155,89,182,0.3)", color:"#9B59B6" }}>
-            {nexusStat.online ? "ONLINE" : "CHECK"}
-          </div>
-        </div>
-        {nexusStat.last_update && (
-          <div style={{ fontSize:9, color:"#3a3a4a", marginTop:6 }}>
-            Last check: {nexusStat.last_update}
-          </div>
-        )}
-      </div>
-
-      {/* Quick Actions */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginTop:4 }}>
-        <button className="btn-secondary" onClick={sendBrief} disabled={sending} style={{ padding:"12px 8px", fontSize:9 }}>
-          📨 Brief
+      {/* Quick actions */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:4 }}>
+        <button onClick={sendBrief} disabled={sending} style={{ padding:"13px", fontFamily:"'Orbitron',monospace", fontSize:9, fontWeight:700, letterSpacing:1, borderRadius:10, border:"1px solid rgba(212,160,23,0.3)", background:"rgba(212,160,23,0.06)", color:"#d4a017", cursor:"pointer" }}>
+          📡 REQUEST BRIEF
         </button>
-        <button className="btn-secondary" onClick={() => { window.location.reload(); }} style={{ padding:"12px 8px", fontSize:9 }}>
-          🔄 Refresh
-        </button>
-        <button className="btn-danger" onClick={emergencyStop} disabled={sending} style={{ padding:"12px 8px", fontSize:9 }}>
-          🛑 STOP ALL
+        <button onClick={() => window.location.reload()} style={{ padding:"13px", fontFamily:"'Orbitron',monospace", fontSize:9, fontWeight:700, letterSpacing:1, borderRadius:10, border:"1px solid rgba(0,212,255,0.3)", background:"rgba(0,212,255,0.06)", color:"#00d4ff", cursor:"pointer" }}>
+          ↺ REFRESH
         </button>
       </div>
 
       {toast && (
-        <div style={{ position:"fixed", bottom:90, left:16, right:16, background:"#0d1a0d", border:"1px solid rgba(0,255,136,0.4)", borderRadius:10, padding:14, textAlign:"center", color:"#00FF88", fontFamily:"'Orbitron',monospace", fontSize:12, zIndex:200 }}>
+        <div style={{ position:"fixed", bottom:90, left:14, right:14, background:"#060f1a", border:"1px solid rgba(0,255,157,0.3)", borderRadius:10, padding:14, textAlign:"center", color:"#00ff9d", fontFamily:"'Orbitron',monospace", fontSize:11, zIndex:200, boxShadow:"0 0 20px rgba(0,255,157,0.2)" }}>
           {toast}
         </div>
       )}

@@ -35,8 +35,17 @@ export default function App() {
         };
       });
       stats.nexus = { online: (data.online_divisions || 0) > 0, last_update: data.last_update };
+      // Also store balance_history per division for charts
+      (data.divisions || []).forEach(div => {
+        const key = { 1:"div1", 2:"div2", 3:"div3" }[div.id];
+        if (key && stats[key]) stats[key].balance_history = div.balance_history || [];
+      });
       ls.set("empire_stats", stats);
       setEmpireStats(stats);
+      // Store recent trades
+      if (data.recent_trades) {
+        ls.set("empire_trades", data.recent_trades);
+      }
     } catch (e) { /* silent — offline */ }
   }, []);
 
