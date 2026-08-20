@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DEFAULT_TOKENS, loadTokens, saveTokens, EMPIRE_TARGETS, ls } from "../config";
+import { loadTokens, saveTokens, EMPIRE_TARGETS, ls } from "../config";
 
 const INP = { width:"100%", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#F0F0F0", padding:"10px 12px", fontSize:12, fontFamily:"'Syne',sans-serif", outline:"none", marginTop:4 };
 const L   = { fontFamily:"'Orbitron',monospace", fontSize:8, letterSpacing:"0.15em", color:"#6B6B80" };
@@ -8,10 +8,10 @@ export default function Settings({ onClose }) {
   const [tokens, setTokens] = useState(loadTokens);
   const [saved, setSaved]   = useState(false);
   const [settings, setSettings] = useState(() => ls.get("empire_settings", {
-    div1_account: "105090703",
-    div2_account: "106034160",
-    div3_account: "5049913114",
-    chat_id:      "8241521898",
+    div1_account: "",
+    div2_account: "",
+    div3_account: "",
+    chat_id:      "",
     nexus_url:    "",
   }));
 
@@ -22,9 +22,9 @@ export default function Settings({ onClose }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const reset = () => {
-    if (!window.confirm("Reset all tokens to defaults?")) return;
-    setTokens({ ...DEFAULT_TOKENS });
+  const clearTokens = () => {
+    if (!window.confirm("Clear all saved bot tokens? You'll need to re-enter them to send commands.")) return;
+    setTokens({});
   };
 
   const BOT_FIELDS = [
@@ -105,7 +105,7 @@ export default function Settings({ onClose }) {
         <button className="btn-primary" onClick={save} style={{ flex:2 }}>
           {saved ? "✓ SAVED" : "SAVE SETTINGS"}
         </button>
-        <button className="btn-secondary" onClick={reset} style={{ flex:1, fontSize:9 }}>RESET</button>
+        <button className="btn-secondary" onClick={clearTokens} style={{ flex:1, fontSize:9 }}>CLEAR</button>
       </div>
 
       <div style={{ marginTop:16, fontSize:9, color:"#3a3a4a", textAlign:"center", lineHeight:1.8 }}>

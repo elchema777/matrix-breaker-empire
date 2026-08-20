@@ -55,7 +55,7 @@ export default function AlertCenter() {
             });
           }
         }
-      } catch {}
+      } catch { /* this bot's updates unavailable — skip, keep others */ }
     }));
 
     // Sort by timestamp desc, deduplicate

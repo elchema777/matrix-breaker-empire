@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { ls } from "../config";
 
 const DIV_COLORS = { div1:"#FFD700", div2:"#00D4FF", div3:"#00FF88" };
@@ -30,7 +30,7 @@ function buildEquityCurve(stats) {
   return data;
 }
 
-function buildDailyPnl(stats) {
+function buildDailyPnl() {
   const days = 7;
   return Array.from({ length: days }, (_, i) => {
     const d = new Date(Date.now() - (days - 1 - i) * 86400000);
@@ -51,7 +51,7 @@ export default function PerformanceCharts() {
   const stats = ls.get("empire_stats", {});
 
   const curve   = buildEquityCurve(stats);
-  const pnlData = buildDailyPnl(stats);
+  const pnlData = buildDailyPnl();
 
   const compareData = ["div1","div2","div3"].map(k => ({
     name: DIV_NAMES[k],

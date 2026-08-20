@@ -20,20 +20,22 @@ export default function CommandCenter() {
   const [log, setLog]           = useState([]);
   const [sending, setSending]   = useState(false);
   const logRef = useRef(null);
+  const logId  = useRef(0);
 
   const tokens = loadTokens();
   const tokenMap = { div1:tokens.div1, div2:tokens.div2, div3:tokens.div3, nexus:tokens.nexus, encoder:tokens.encoder };
   const div = DIVISIONS[selected];
 
   const addLog = (dir, text, color="#F0F0F0") => {
-    const entry = { id:Date.now(), dir, text, color, ts:new Date().toLocaleTimeString() };
+    const entry = { id: ++logId.current, dir, text, color, ts:new Date().toLocaleTimeString() };
     setLog(prev => [entry, ...prev].slice(0, 80));
   };
 
   const send = async cmd => {
     if (sending) return;
     const token = tokenMap[selected];
-    if (!token) { addLog("ERR","No token for this bot","#FF3B3B"); return; }
+    if (!token) { addLog("ERR","No token configured for this bot — set it in Settings","#FF3B3B"); return; }
+    if (!tokens.chatId) { addLog("ERR","No chat ID configured — set it in Settings","#FF3B3B"); return; }
     setSending(true);
     addLog("→", `[${div.label}] ${cmd}`, div.color);
     try {
@@ -141,7 +143,7 @@ export default function CommandCenter() {
 
       <div style={{ marginTop:12, fontSize:10, color:"#2a2a3a", textAlign:"center", lineHeight:1.8 }}>
         Commands are sent via Telegram Bot API.<br/>
-        Bot responses arrive in your Telegram app (@8241521898).
+        {tokens.chatId ? "Bot responses arrive in your Telegram app." : "Set your chat ID in Settings to receive responses."}
       </div>
     </div>
   );

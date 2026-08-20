@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { loadTokens, sendMessage } from "../config";
 
 const KNOWN_ISSUES = [
@@ -33,12 +33,13 @@ export default function SystemHealth() {
   const [lastHealth, setLastHealth] = useState(null);
 
   const tokens = loadTokens();
+  const logId = useRef(0);
 
   const addLog = (msg, color="#F0F0F0") => {
-    setLog(prev => [{ id:Date.now(), msg, color, ts:new Date().toLocaleTimeString() }, ...prev].slice(0, 30));
+    setLog(prev => [{ id: ++logId.current, msg, color, ts:new Date().toLocaleTimeString() }, ...prev].slice(0, 30));
   };
 
-  const sendAll = async (cmd, label) => {
+  const sendAll = async cmd => {
     setSending(true);
     addLog(`Sending ${cmd} to all divisions...`, "#FFD700");
     const bots = [
@@ -49,6 +50,7 @@ export default function SystemHealth() {
       { label:"Encoder", token:tokens.encoder },
     ];
     await Promise.allSettled(bots.map(async b => {
+      if (!b.token) { addLog(`${b.label}: not configured — set token in Settings`, "#FF8C00"); return; }
       try {
         const res = await sendMessage(b.token, tokens.chatId, cmd);
         addLog(`${b.label}: ${res.ok ? "✓ sent" : "✗ " + (res.description||"failed")}`, res.ok ? "#00FF88" : "#FF3B3B");
@@ -60,6 +62,7 @@ export default function SystemHealth() {
   };
 
   const healthCheck = async () => {
+    if (!tokens.nexus) { addLog("NEXUS not configured — set token in Settings", "#FF8C00"); return; }
     setSending(true);
     addLog("Sending /health to NEXUS...", "#9B59B6");
     try {
@@ -74,21 +77,27 @@ export default function SystemHealth() {
 
   const stopAll = async () => {
     if (!window.confirm("Send /stop to ALL divisions? (Div1, Div2, Div3)")) return;
-    await sendAll("/stop", "STOP ALL");
+    await sendAll("/stop");
   };
 
   const resumeAll = async () => {
-    await sendAll("/resume", "RESUME ALL");
+    await sendAll("/resume");
   };
 
   const fullReport = async () => {
     setSending(true);
-    addLog("Sending /report to all bots...", "#FFD700");
-    await Promise.allSettled([
-      sendMessage(tokens.nexus,   tokens.chatId, "/report"),
-      sendMessage(tokens.encoder, tokens.chatId, "/all"),
-    ]);
-    addLog("Report requests sent — check Telegram app", "#00D4FF");
+    const missing = ["nexus","encoder"].filter(k => !tokens[k]);
+    if (missing.length) {
+      addLog(`${missing.join(", ")} not configured — set token(s) in Settings`, "#FF8C00");
+    }
+    const requests = [];
+    if (tokens.nexus)   requests.push(sendMessage(tokens.nexus,   tokens.chatId, "/report"));
+    if (tokens.encoder) requests.push(sendMessage(tokens.encoder, tokens.chatId, "/all"));
+    if (requests.length) {
+      addLog("Sending /report to all bots...", "#FFD700");
+      await Promise.allSettled(requests);
+      addLog("Report requests sent — check Telegram app", "#00D4FF");
+    }
     setSending(false);
   };
 
