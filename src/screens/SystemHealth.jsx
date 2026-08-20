@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { loadTokens, sendMessage } from "../config";
 
 const KNOWN_ISSUES = [
@@ -33,12 +33,13 @@ export default function SystemHealth() {
   const [lastHealth, setLastHealth] = useState(null);
 
   const tokens = loadTokens();
+  const logId = useRef(0);
 
   const addLog = (msg, color="#F0F0F0") => {
-    setLog(prev => [{ id:Date.now(), msg, color, ts:new Date().toLocaleTimeString() }, ...prev].slice(0, 30));
+    setLog(prev => [{ id: ++logId.current, msg, color, ts:new Date().toLocaleTimeString() }, ...prev].slice(0, 30));
   };
 
-  const sendAll = async (cmd, label) => {
+  const sendAll = async cmd => {
     setSending(true);
     addLog(`Sending ${cmd} to all divisions...`, "#FFD700");
     const bots = [
@@ -74,11 +75,11 @@ export default function SystemHealth() {
 
   const stopAll = async () => {
     if (!window.confirm("Send /stop to ALL divisions? (Div1, Div2, Div3)")) return;
-    await sendAll("/stop", "STOP ALL");
+    await sendAll("/stop");
   };
 
   const resumeAll = async () => {
-    await sendAll("/resume", "RESUME ALL");
+    await sendAll("/resume");
   };
 
   const fullReport = async () => {

@@ -20,13 +20,14 @@ export default function CommandCenter() {
   const [log, setLog]           = useState([]);
   const [sending, setSending]   = useState(false);
   const logRef = useRef(null);
+  const logId  = useRef(0);
 
   const tokens = loadTokens();
   const tokenMap = { div1:tokens.div1, div2:tokens.div2, div3:tokens.div3, nexus:tokens.nexus, encoder:tokens.encoder };
   const div = DIVISIONS[selected];
 
   const addLog = (dir, text, color="#F0F0F0") => {
-    const entry = { id:Date.now(), dir, text, color, ts:new Date().toLocaleTimeString() };
+    const entry = { id: ++logId.current, dir, text, color, ts:new Date().toLocaleTimeString() };
     setLog(prev => [entry, ...prev].slice(0, 80));
   };
 

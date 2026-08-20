@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { DIVISIONS, EMPIRE_TARGETS, loadTokens, sendMessage, ls } from "../config";
 
 function getPRTime() {
@@ -127,7 +127,7 @@ function DivCard({ divKey, stats, trades }) {
 }
 
 // ── Main component ────────────────────────────────────────────────
-export default function EmpireOverview({ onNavigate }) {
+export default function EmpireOverview() {
   const [time, setTime]   = useState(getPRTime());
   const [stats, setStats] = useState(() => ls.get("empire_stats", {}));
   const [trades, setTrades] = useState(() => ls.get("empire_trades", []));
