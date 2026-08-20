@@ -159,10 +159,15 @@ export default function EmpireOverview() {
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const sendBrief = async () => {
-    setSending(true);
     const tokens = loadTokens();
-    await sendMessage(tokens.nexus, tokens.chatId, "/empire");
-    showToast("Brief requested from @MatrixNexus_bot");
+    if (!tokens.nexus) { showToast("⚠ NEXUS token not configured — set it in Settings"); return; }
+    setSending(true);
+    try {
+      const res = await sendMessage(tokens.nexus, tokens.chatId, "/empire");
+      showToast(res.ok ? "Brief requested from @MatrixNexus_bot" : `⚠ Failed: ${res.description || "unknown error"}`);
+    } catch (e) {
+      showToast(`⚠ Network error: ${e.message}`);
+    }
     setSending(false);
   };
 

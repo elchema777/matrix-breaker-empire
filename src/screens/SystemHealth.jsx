@@ -50,6 +50,7 @@ export default function SystemHealth() {
       { label:"Encoder", token:tokens.encoder },
     ];
     await Promise.allSettled(bots.map(async b => {
+      if (!b.token) { addLog(`${b.label}: not configured — set token in Settings`, "#FF8C00"); return; }
       try {
         const res = await sendMessage(b.token, tokens.chatId, cmd);
         addLog(`${b.label}: ${res.ok ? "✓ sent" : "✗ " + (res.description||"failed")}`, res.ok ? "#00FF88" : "#FF3B3B");
@@ -61,6 +62,7 @@ export default function SystemHealth() {
   };
 
   const healthCheck = async () => {
+    if (!tokens.nexus) { addLog("NEXUS not configured — set token in Settings", "#FF8C00"); return; }
     setSending(true);
     addLog("Sending /health to NEXUS...", "#9B59B6");
     try {
@@ -84,12 +86,18 @@ export default function SystemHealth() {
 
   const fullReport = async () => {
     setSending(true);
-    addLog("Sending /report to all bots...", "#FFD700");
-    await Promise.allSettled([
-      sendMessage(tokens.nexus,   tokens.chatId, "/report"),
-      sendMessage(tokens.encoder, tokens.chatId, "/all"),
-    ]);
-    addLog("Report requests sent — check Telegram app", "#00D4FF");
+    const missing = ["nexus","encoder"].filter(k => !tokens[k]);
+    if (missing.length) {
+      addLog(`${missing.join(", ")} not configured — set token(s) in Settings`, "#FF8C00");
+    }
+    const requests = [];
+    if (tokens.nexus)   requests.push(sendMessage(tokens.nexus,   tokens.chatId, "/report"));
+    if (tokens.encoder) requests.push(sendMessage(tokens.encoder, tokens.chatId, "/all"));
+    if (requests.length) {
+      addLog("Sending /report to all bots...", "#FFD700");
+      await Promise.allSettled(requests);
+      addLog("Report requests sent — check Telegram app", "#00D4FF");
+    }
     setSending(false);
   };
 
