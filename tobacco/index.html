@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Matrix Leaf" />
+    <meta name="theme-color" content="#050508" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <title>⬡ Matrix Leaf</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      html{background:#050508;}
+      body{background:#050508;color:#F0F0F0;font-family:'Syne',sans-serif;-webkit-tap-highlight-color:transparent;padding-top:env(safe-area-inset-top);}
+      button{font-family:'Syne',sans-serif;}
+      input,select,textarea{font-size:16px;color-scheme:dark;}
+      select option{background:#0b0b12;}
+      ::-webkit-scrollbar{width:3px;height:3px;}
+      ::-webkit-scrollbar-thumb{background:rgba(255,215,0,0.2);border-radius:2px;}
+      .btn-primary{background:linear-gradient(135deg,#FFD700,#FF8C00);color:#050508;border:none;border-radius:10px;padding:13px 20px;font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+      .btn-secondary{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#F0F0F0;padding:11px 16px;font-family:'Orbitron',monospace;font-size:10px;font-weight:600;letter-spacing:1px;cursor:pointer;}
+      .btn-danger{background:rgba(255,59,59,0.12);border:1px solid rgba(255,59,59,0.35);border-radius:10px;color:#FF6B6B;padding:11px 16px;font-family:'Orbitron',monospace;font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+      .btn-primary:active,.btn-secondary:active,.btn-danger:active,.tb-fab:active{transform:scale(0.97);}
+      @keyframes tb-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+      .tb-sheet{animation:tb-up .22s ease-out;}
+      @keyframes tb-shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
+      .tb-shake{animation:tb-shake .4s;}
+      @keyframes tb-pulse{0%,100%{filter:drop-shadow(0 0 8px rgba(255,215,0,.35))}50%{filter:drop-shadow(0 0 22px rgba(0,212,255,.6))}}
+      .tb-pulse{animation:tb-pulse 3s ease-in-out infinite;}
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="../src/tobacco/main.jsx"></script>
+  </body>
+</html>
