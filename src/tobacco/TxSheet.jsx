@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { TYPES, todayStr, money, grams, num } from "./calc";
+import { TYPES, todayStr, money, grams, num, buildLedger, estimateCogs, niceDate } from "./calc";
 import { uid, now } from "./store";
 import { Sheet, Field, Label, Chip } from "./ui";
 import { C, F, inp } from "./theme";
@@ -25,6 +25,7 @@ export default function TxSheet({ type, tx, preset = {}, state, ledger, dispatch
   const [qty, setQty] = useState(initQty);
   const [unit, setUnit] = useState("g");
   const [amount, setAmount] = useState(tx ? String(type === "sale" ? tx.price : tx.amount ?? "") : preset.amount != null ? String(round(preset.amount)) : "");
+  const [lotId, setLotId] = useState(tx?.lotId || "");
   const [paid, setPaid] = useState(tx && type === "sale" ? String(tx.paid ?? tx.price) : "");
   const [paidTouched, setPaidTouched] = useState(!!tx && type === "sale" && tx.paid != null && tx.paid !== tx.price);
   const [note, setNote] = useState(tx?.note || "");
@@ -38,10 +39,14 @@ export default function TxSheet({ type, tx, preset = {}, state, ledger, dispatch
   const suppliers = useMemo(() => [...new Set(txs.filter(t => t.type === "buy" && t.supplier).map(t => t.supplier))], [txs]);
   const cust = ledger.customers.get(customerId);
 
-  const avgCost = ledger.stock.avg;
-  const estCogs = g * avgCost;
+  // When editing a sale, preview against stock as it was before that sale.
+  const base = useMemo(() => (editing && type === "sale" ? buildLedger(txs.filter(t => t.id !== tx.id), customers, settings) : ledger), [editing, type, tx, txs, customers, settings, ledger]);
+  const estCogs = type === "sale" ? estimateCogs(base, g, lotId) : 0;
+  const costPpg = g > 0 ? estCogs / g : 0;
   const estProfit = amt - estCogs;
-  const overStock = type === "sale" && !editing && g > ledger.stock.g + 0.001 && ledger.T.buyCount > 0;
+  const batches = base.lots.filter(l => l.remaining > 0.001 || l.id === lotId);
+  const pickedLot = base.lots.find(l => l.id === lotId);
+  const overStock = type === "sale" && g > base.stock.g + 0.001 && base.T.buyCount > 0;
 
   const save = () => {
     setErr("");
@@ -60,12 +65,12 @@ export default function TxSheet({ type, tx, preset = {}, state, ledger, dispatch
       cid = uid();
       dispatch({ type: "addCust", customer: { id: cid, name: newName.trim(), phone: "", notes: "", createdAt: now() } });
     }
-    const base = { id: tx?.id || uid(), type, date, ts: tx?.ts || now(), note: note.trim() };
+    const rec = { id: tx?.id || uid(), type, date, ts: tx?.ts || now(), note: note.trim() };
     let out;
-    if (type === "sale") out = { ...base, customerId: cid, grams: round(g, 3), price: round(amt), paid: round(paidNow) };
-    else if (type === "buy") out = { ...base, supplier: supplier.trim(), grams: round(g, 3), amount: round(amt) };
-    else if (type === "expense") out = { ...base, amount: round(amt) };
-    else out = { ...base, customerId: cid, amount: round(amt) };
+    if (type === "sale") out = { ...rec, customerId: cid, lotId: lotId || null, grams: round(g, 3), price: round(amt), paid: round(paidNow) };
+    else if (type === "buy") out = { ...rec, supplier: supplier.trim(), grams: round(g, 3), amount: round(amt) };
+    else if (type === "expense") out = { ...rec, amount: round(amt) };
+    else out = { ...rec, customerId: cid, amount: round(amt) };
     dispatch({ type: editing ? "updateTx" : "addTx", tx: out });
     onClose();
   };
@@ -121,6 +126,15 @@ export default function TxSheet({ type, tx, preset = {}, state, ledger, dispatch
 
       {(type === "sale" || type === "buy") && qtyField()}
 
+      {type === "sale" && batches.length > 0 && (
+        <Field label="TAKE FROM BATCH" hint="Auto uses your oldest batch first. Pick one to cost this sale at that batch's exact price.">
+          <select value={lotId} onChange={e => setLotId(e.target.value)} style={inp}>
+            <option value="">Auto — oldest batch first</option>
+            {batches.map(l => <option key={l.id} value={l.id}>{niceDate(l.date)} · {l.supplier ? l.supplier + " · " : ""}{grams(l.grams)} @ {money(l.ppg)}/g · {grams(l.remaining)} left</option>)}
+          </select>
+        </Field>
+      )}
+
       <Field label={type === "sale" ? "PRICE ($)" : type === "buy" ? "TOTAL COST ($)" : "AMOUNT ($)"}>
         <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" style={inp} />
         {type === "payment" && cust && cust.owed > 0.005 && (
@@ -145,7 +159,7 @@ export default function TxSheet({ type, tx, preset = {}, state, ledger, dispatch
       {(type === "sale" || type === "buy") && g > 0 && amt >= 0 && amount !== "" && (
         <div style={{ background: T.color + "0d", border: `1px solid ${T.color}33`, borderRadius: 10, padding: 12, marginBottom: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 80 }}><Label>PER GRAM</Label><div style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, color: T.color, marginTop: 4 }}>{money(amt / g)}</div></div>
-          {type === "sale" && avgCost > 0 && (
+          {type === "sale" && costPpg > 0 && (
             <>
               <div style={{ flex: 1, minWidth: 80 }}><Label>EST. PROFIT</Label><div style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, color: estProfit >= 0 ? C.green : C.red, marginTop: 4 }}>{money(estProfit, true)}</div></div>
               <div style={{ flex: 1, minWidth: 80 }}><Label>MARGIN</Label><div style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, color: C.text, marginTop: 4 }}>{amt > 0 ? Math.round((estProfit / amt) * 100) : 0}%</div></div>
@@ -154,10 +168,10 @@ export default function TxSheet({ type, tx, preset = {}, state, ledger, dispatch
           {type === "sale" && amt - paidNow > 0.005 && (
             <div style={{ flex: "1 0 100%", fontSize: 11, color: C.orange }}>⏳ {money(amt - paidNow)} will be added to what this customer owes.</div>
           )}
-          {type === "sale" && avgCost > 0 && <div style={{ flex: "1 0 100%", fontSize: 10, color: C.dim }}>Cost basis {money(avgCost)}/g (weighted average of your buys)</div>}
+          {type === "sale" && costPpg > 0 && <div style={{ flex: "1 0 100%", fontSize: 10, color: C.dim }}>Your cost {money(costPpg)}/g · {pickedLot ? `from the ${niceDate(pickedLot.date)} batch` : "oldest batch first"}</div>}
         </div>
       )}
-      {overStock && <div style={{ fontSize: 11, color: C.gold, marginBottom: 12 }}>⚠ You only have {grams(ledger.stock.g)} logged in stock — log the buy first so profit is accurate.</div>}
+      {overStock && <div style={{ fontSize: 11, color: C.gold, marginBottom: 12 }}>⚠ You only have {grams(base.stock.g)} logged in stock — log the buy first so profit is accurate.</div>}
       {err && <div style={{ fontFamily: F.head, fontSize: 9, letterSpacing: 1, color: C.red, marginBottom: 10 }}>{err.toUpperCase()}</div>}
 
       <div style={{ display: "flex", gap: 8 }}>

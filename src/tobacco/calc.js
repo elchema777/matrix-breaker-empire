@@ -1,7 +1,8 @@
 // Pure ledger math for Matrix Leaf. No React, no storage — everything is derived from txs + customers.
 //
 // Accounting model
-//  - Inventory is valued at moving weighted-average cost (WAC). Each sale books COGS = grams * WAC at that moment.
+//  - Every buy is its own batch (lot) with its own price. A sale draws from the batch you pick, otherwise the oldest
+//    batch first (FIFO), and books COGS at that batch's actual cost per gram.
 //  - Revenue / profit are accrual-based (a sale counts when made, even if the customer still owes).
 //  - Cash view is separate: cash in = money actually collected (sale paid + payments), cash out = buys + expenses.
 //  - Debts are applied FIFO: a customer's payment clears their oldest open debt first (drives aging).
@@ -39,6 +40,34 @@ export function grams(v) {
 export const pct = v => `${(Math.round(num(v) * 10) / 10).toFixed(1)}%`;
 export const safeDiv = (a, b) => (b ? a / b : 0);
 
+const LOT_EPS = 1e-9;
+
+/**
+ * Take `g` grams out of the batches: the preferred batch first (if given), then oldest-first.
+ * Mutates the lots, returns the cost of goods for the grams taken. Grams beyond what's logged in stock
+ * (a sale logged before its buy) are costed at the latest known price per gram.
+ */
+function consumeLots(lots, g, price, preferId, fallbackPpg) {
+  const order = [...lots.filter(l => l.id === preferId), ...lots.filter(l => l.id !== preferId)];
+  let need = g, cogs = 0;
+  for (const l of order) {
+    if (need <= LOT_EPS) break;
+    if (l.remaining <= LOT_EPS) continue;
+    const take = Math.min(l.remaining, need);
+    const c = take * l.ppg;
+    l.remaining -= take; l.soldG += take; l.cogs += c; l.revenue += g > 0 ? (price * take) / g : 0;
+    cogs += c; need -= take;
+  }
+  if (need > LOT_EPS) cogs += need * fallbackPpg;
+  return cogs;
+}
+
+/** What a sale of `g` grams would cost you right now, without changing anything (used for the live preview). */
+export function estimateCogs(ledger, g, preferId) {
+  const copy = ledger.lots.map(l => ({ ...l }));
+  return consumeLots(copy, g, 0, preferId, ledger.lastPpg);
+}
+
 /**
  * Replay every transaction chronologically and derive inventory, profit, cash, debts and customer stats.
  * @param {Array} txs raw transactions
@@ -50,7 +79,8 @@ export function buildLedger(txs, customers, settings = {}) {
     .sort((a, b) => (a.date === b.date ? num(a.ts) - num(b.ts) : a.date < b.date ? -1 : 1))
     .map(t => ({ ...t }));
 
-  let poolG = 0, poolCost = 0, lastAvg = 0;
+  const lots = [];
+  let stockG = 0, lastPpg = 0;
   const T = { revenue: 0, cogs: 0, expenses: 0, buySpend: 0, gramsBought: 0, gramsSold: 0, saleCount: 0, buyCount: 0, cashIn: 0, cashOut: 0, creditSales: 0, paymentsIn: 0 };
   const cs = new Map();
   const days = new Map();
@@ -81,17 +111,18 @@ export function buildLedger(txs, customers, settings = {}) {
     const d = dayOf(r.date);
     if (r.type === "buy") {
       const g = num(r.grams), a = num(r.amount);
-      poolG += g; poolCost += a;
-      if (poolG > 0) lastAvg = poolCost / poolG;
+      if (g > 0) {
+        lastPpg = a / g;
+        lots.push({ id: r.id, date: r.date, supplier: r.supplier || "", note: r.note || "", grams: g, cost: a, ppg: a / g, remaining: g, soldG: 0, revenue: 0, cogs: 0 });
+      }
+      stockG += g;
       T.buySpend += a; T.gramsBought += g; T.buyCount++; T.cashOut += a;
       d.buyCost += a; d.gramsBought += g;
     } else if (r.type === "sale") {
       const g = num(r.grams), p = num(r.price);
       const paid = Math.min(p, Math.max(0, r.paid == null ? p : num(r.paid)));
-      const avg = poolG > 0 ? poolCost / poolG : lastAvg;
-      const cogs = g * avg;
-      poolG = Math.max(0, poolG - g);
-      poolCost = Math.max(0, poolCost - cogs);
+      const cogs = consumeLots(lots, g, p, r.lotId, lastPpg);
+      stockG = Math.max(0, stockG - g);
       r.cogs = cogs; r.profit = p - cogs; r.paid = paid; r.owed = p - paid;
       T.revenue += p; T.cogs += cogs; T.gramsSold += g; T.saleCount++; T.cashIn += paid; T.creditSales += p - paid;
       d.revenue += p; d.cogs += cogs; d.gramsSold += g; d.sales++;
@@ -110,7 +141,7 @@ export function buildLedger(txs, customers, settings = {}) {
       const a = num(r.amount);
       T.expenses += a; T.cashOut += a; d.expenses += a;
     }
-    d.stockG = poolG;
+    d.stockG = stockG;
   }
 
   const today = todayStr();
@@ -159,7 +190,12 @@ export function buildLedger(txs, customers, settings = {}) {
   const netProfit = grossProfit - T.expenses;
   return {
     rows, daily, customers: stats,
-    stock: { g: poolG, cost: poolCost, avg: poolG > 0 ? poolCost / poolG : lastAvg },
+    lots,
+    lastPpg,
+    stock: (() => {
+      const g = lots.reduce((a, l) => a + l.remaining, 0), cost = lots.reduce((a, l) => a + l.remaining * l.ppg, 0);
+      return { g, cost, avg: g > 0 ? cost / g : lastPpg };
+    })(),
     T: {
       ...T, grossProfit, netProfit, receivable, debtors,
       margin: safeDiv(grossProfit, T.revenue) * 100,

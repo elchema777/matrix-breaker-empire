@@ -3,7 +3,7 @@ import { money, grams, buildAlerts, todayStr, addDays, fillDays, daysBetween, TY
 import { Panel, Label, Stat, Title, TxRow, Spark, Empty } from "../ui";
 import { C, F } from "../theme";
 
-export default function Home({ state, ledger, open, goto, openProfile, loadStarter }) {
+export default function Home({ state, ledger, open, goto, openProfile, loadStarter, openBatches }) {
   const { T, stock, rows, daily, customers } = ledger;
   const { settings } = state;
   const today = todayStr();
@@ -58,12 +58,12 @@ export default function Home({ state, ledger, open, goto, openProfile, loadStart
       </Panel>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-        <Panel color={C.cyan}>
+        <Panel color={C.cyan} onClick={openBatches}>
           <Stat label="STOCK" value={grams(stock.g)} color={C.cyan} sub={`${(stock.g / (settings.gPerOz || 28)).toFixed(1)} oz · worth ${money(stock.cost)}`} />
           <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, marginTop: 10 }}>
             <div style={{ width: `${stockPct}%`, height: "100%", borderRadius: 2, background: stock.g <= settings.lowStockG ? C.red : C.cyan }} />
           </div>
-          <div style={{ fontSize: 10, color: C.dim, marginTop: 6 }}>avg cost {money(stock.avg)}/g</div>
+          <div style={{ fontSize: 10, color: C.dim, marginTop: 6 }}>avg cost {money(stock.avg)}/g · tap for batches</div>
         </Panel>
         <Panel color={C.orange} onClick={() => goto("owed")}>
           <Stat label="OWED TO YOU" value={money(T.receivable)} color={T.receivable > 0 ? C.orange : C.green} sub={T.debtors ? `${T.debtors} ${T.debtors === 1 ? "person" : "people"}` : "all clear"} />

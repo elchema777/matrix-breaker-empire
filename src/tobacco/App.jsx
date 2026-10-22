@@ -3,6 +3,7 @@ import MatrixRain from "../components/MatrixRain";
 import Lock from "./Lock";
 import TxSheet from "./TxSheet";
 import CustomerSheet from "./CustomerSheet";
+import BatchesSheet from "./BatchesSheet";
 import Home from "./screens/Home";
 import Log from "./screens/Log";
 import Clients from "./screens/Clients";
@@ -41,6 +42,7 @@ function Main({ onLock }) {
   const [sheet, setSheet] = useState(null);      // { type, tx, preset }
   const [custSheet, setCustSheet] = useState(null); // { customer }
   const [menu, setMenu] = useState(false);
+  const [batches, setBatches] = useState(false);
   const [profileId, setProfileId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const hiddenAt = useRef(0);
@@ -58,7 +60,7 @@ function Main({ onLock }) {
   }, [onLock]);
 
   const goto = t => { setShowSettings(false); setTab(t); if (t !== "clients") setProfileId(null); window.scrollTo(0, 0); };
-  const open = (type, tx = null, preset = {}) => { setMenu(false); setSheet({ type, tx, preset }); };
+  const open = (type, tx = null, preset = {}) => { setMenu(false); setBatches(false); setSheet({ type, tx, preset }); };
   const openProfile = id => { setShowSettings(false); setTab("clients"); setProfileId(id); window.scrollTo(0, 0); };
 
   /** One-time opt-in seed from the user's Notes page. Quantities for sales weren't in the note, so only buys + open debts load. */
@@ -97,7 +99,7 @@ function Main({ onLock }) {
           <Settings state={state} dispatch={dispatch} onClose={() => setShowSettings(false)} loadStarter={loadStarter} onLock={onLock} saveError={saveError} />
         ) : (
           <>
-            {tab === "home" && <Home state={state} ledger={ledger} open={open} goto={goto} openProfile={openProfile} loadStarter={loadStarter} />}
+            {tab === "home" && <Home state={state} ledger={ledger} open={open} goto={goto} openProfile={openProfile} loadStarter={loadStarter} openBatches={() => setBatches(true)} />}
             {tab === "log" && <Log ledger={ledger} open={open} />}
             {tab === "clients" && <Clients ledger={ledger} profileId={profileId} setProfileId={setProfileId} newCustomer={() => setCustSheet({})} editCustomer={c => setCustSheet({ customer: c })} open={open} />}
             {tab === "owed" && <Deben ledger={ledger} settings={state.settings} open={open} openProfile={openProfile} />}
@@ -125,6 +127,7 @@ function Main({ onLock }) {
         })}
       </nav>
 
+      {batches && <BatchesSheet ledger={ledger} open={open} onClose={() => setBatches(false)} />}
       {menu && (
         <Sheet title="LOG AN ENTRY" onClose={() => setMenu(false)}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
